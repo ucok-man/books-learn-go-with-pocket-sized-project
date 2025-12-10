@@ -1,3 +1,6 @@
 go 1.25.0
 
-use ./02-greeting
+use (
+	./02-greeting
+	./03-bookworm
+)
