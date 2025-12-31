@@ -1,60 +1,62 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"reflect"
 	"testing"
 )
 
 var (
-	handmaidsTale = Book{
-		Author: "Margaret Atwood", Title: "The Handmaid's Tale",
-	}
-	oryxAndCrake = Book{
-		Author: "Margaret Atwood", Title: "Oryx and Crake",
-	}
-	theBellJar = Book{
-		Author: "Sylvia Plath", Title: "The Bell Jar",
-	}
-	janeEyre = Book{
-		Author: "Charlotte Brontë", Title: "Jane Eyre",
-	}
+	handmaidsTale = Book{Author: "Margaret Atwood", Title: "The Handmaid's Tale"}
+	oryxAndCrake  = Book{Author: "Margaret Atwood", Title: "Oryx and Crake"}
+	theBellJar    = Book{Author: "Sylvia Plath", Title: "The Bell Jar"}
+	janeEyre      = Book{Author: "Charlotte Brontë", Title: "Jane Eyre"}
+	villette      = Book{Author: "Charlotte Brontë", Title: "Villette"}
+	ilPrincipe    = Book{Author: "Niccolò Machiavelli", Title: "Il Principe"}
 )
 
-func TestLoadBookworm(t *testing.T) {
-	type TestCase struct {
+func TestLoadBookworms(t *testing.T) {
+	noError := func(err error) bool { return err == nil }
+
+	type testCase struct {
 		bookwormsFile string
 		want          []Bookworm
-		wantErr       bool
+		checkError    func(err error) bool
 	}
 
-	tests := map[string]TestCase{
-		"file exist": {
-			bookwormsFile: "testdata/bookworms.json",
+	tests := map[string]testCase{
+		"no common book": {
+			bookwormsFile: "testdata/no_common_book.json",
 			want: []Bookworm{
 				{Name: "Fadi", Books: []Book{handmaidsTale, theBellJar}},
-				{Name: "Peggy", Books: []Book{oryxAndCrake, handmaidsTale, janeEyre}},
+				{Name: "Peggy", Books: []Book{oryxAndCrake, janeEyre}},
 			},
-			wantErr: false,
+			checkError: noError,
 		},
 		"file doesn't exist": {
 			bookwormsFile: "testdata/no_file_here.json",
-			want:          nil,
-			wantErr:       true,
+			checkError: func(err error) bool {
+				return errors.Is(err, fs.ErrNotExist)
+			},
+		},
+		"invalid JSON": {
+			bookwormsFile: "testdata/invalid.json",
+			checkError: func(err error) bool {
+				var expectedErr *json.SyntaxError
+				return errors.As(err, &expectedErr)
+			},
 		},
 	}
-
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			got, err := loadBookworms(tc.bookwormsFile)
-
-			if err != nil && !tc.wantErr {
-				t.Fatalf("expected no error, got one %s", err.Error())
+			if !tc.checkError(err) {
+				t.Fatalf("unexpected error: %s", err.Error())
 			}
 
-			if err == nil && tc.wantErr {
-				t.Fatal("expected an error to occur, got nil instead")
-			}
-
-			if !equalBookworms(t, got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("different result: got %v, expected %v", got, tc.want)
 			}
 		})
@@ -62,10 +64,12 @@ func TestLoadBookworm(t *testing.T) {
 }
 
 func TestFindCommonBooks(t *testing.T) {
-	tt := map[string]struct {
+	type testCase struct {
 		input []Bookworm
 		want  []Book
-	}{
+	}
+
+	tt := map[string]testCase{
 		"no common book": {
 			input: []Bookworm{
 				{Name: "Fadi", Books: []Book{handmaidsTale, theBellJar}},
@@ -75,111 +79,35 @@ func TestFindCommonBooks(t *testing.T) {
 		},
 		"one common book": {
 			input: []Bookworm{
-				{Name: "Fadi", Books: []Book{handmaidsTale, oryxAndCrake}},
 				{Name: "Peggy", Books: []Book{oryxAndCrake, janeEyre}},
+				{Name: "Did", Books: []Book{janeEyre}},
 			},
-			want: []Book{oryxAndCrake},
+			want: []Book{janeEyre},
 		},
-		"two bookworms have the same books on their shelves": {
+		"three bookworms have the same books on their shelves": {
 			input: []Bookworm{
-				{Name: "Fadi", Books: []Book{handmaidsTale, theBellJar}},
-				{Name: "Peggy", Books: []Book{handmaidsTale, theBellJar}},
+				{Name: "Peggy", Books: []Book{oryxAndCrake, ilPrincipe, janeEyre}},
+				{Name: "Did", Books: []Book{janeEyre}},
+				{Name: "Ali", Books: []Book{janeEyre, ilPrincipe}},
 			},
-			want: []Book{handmaidsTale, theBellJar},
+			want: []Book{janeEyre, ilPrincipe},
+		},
+		"output is sorted by authors and then title": {
+			input: []Bookworm{
+				{Name: "Peggy", Books: []Book{ilPrincipe, janeEyre, villette}},
+				{Name: "Did", Books: []Book{janeEyre}},
+				{Name: "Ali", Books: []Book{villette, ilPrincipe}},
+			},
+			want: []Book{janeEyre, villette, ilPrincipe},
 		},
 	}
 
 	for name, tc := range tt {
 		t.Run(name, func(t *testing.T) {
 			got := findCommonBooks(tc.input)
-
-			if !equalBooks(t, tc.want, got) {
+			if !reflect.DeepEqual(tc.want, got) {
 				t.Fatalf("got a different list of books: %v, expected %v", got, tc.want)
 			}
 		})
 	}
-}
-
-func TestBooksCount(t *testing.T) {
-	tt := map[string]struct {
-		input []Bookworm
-		want  map[Book]uint
-	}{
-		"nominal use case": {
-			input: []Bookworm{
-				{Name: "Fadi", Books: []Book{handmaidsTale, theBellJar}},
-				{Name: "Peggy", Books: []Book{oryxAndCrake, handmaidsTale, janeEyre}},
-			},
-			want: map[Book]uint{
-				handmaidsTale: 2,
-				theBellJar:    1,
-				oryxAndCrake:  1,
-				janeEyre:      1,
-			},
-		},
-		"no bookworms": {
-			input: []Bookworm{},
-			want:  map[Book]uint{},
-		},
-	}
-
-	for name, tc := range tt {
-		t.Run(name, func(t *testing.T) {
-			got := booksCount(tc.input)
-
-			if !equalBooksCount(t, tc.want, got) { // #3
-				t.Fatalf("got a different list of books: %v, expected %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func equalBookworms(t *testing.T, bookworms, target []Bookworm) bool {
-	t.Helper()
-
-	if len(bookworms) != len(target) {
-		return false
-	}
-
-	for i := range bookworms {
-		if bookworms[i].Name != target[i].Name {
-			return false
-		}
-		if !equalBooks(t, bookworms[i].Books, target[i].Books) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func equalBooks(t *testing.T, books, target []Book) bool {
-	t.Helper()
-
-	if len(books) != len(target) {
-		return false
-	}
-
-	for i := range books {
-		if books[i] != target[i] {
-			return false
-		}
-	}
-
-	return true
-}
-
-func equalBooksCount(t *testing.T, got, want map[Book]uint) bool {
-	t.Helper()
-	if len(got) != len(want) {
-		return false
-	}
-
-	for book, targetCount := range want {
-		count, found := got[book]
-		if !found || targetCount != count {
-			return false
-		}
-	}
-	return true
 }

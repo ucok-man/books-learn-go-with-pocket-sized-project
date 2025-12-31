@@ -2,42 +2,11 @@ package main
 
 import "testing"
 
-// func Examplemain() {
-// 	main()
-// 	// Output:
-// 	// Hello, World!
-// }
-
-// func TestGreet_English(t *testing.T) {
-// 	lang := language("en") // Preparation phase
-// 	want := "Hello world"
-// 	got := greet(lang) // Execution phase
-
-// 	if got != want { // Decision phase
-// 		t.Errorf("expected: %q, got: %q", want, got)
-// 	}
-// }
-
-// func TestGreet_French(t *testing.T) {
-// 	lang := language("fr") // Preparation phase
-// 	want := "Bonjour le monde"
-// 	got := greet(lang) // Execution phase
-
-// 	if got != want { // Decision phase
-// 		t.Errorf("expected: %q, got: %q", want, got)
-// 	}
-// }
-
-// func TestGreet_Akkadian(t *testing.T) {
-// 	// Akkadian is not implemented yet!
-// 	lang := language("akk") // Preparation phase
-// 	want := ""
-// 	got := greet(lang) // Execution phase
-
-// 	if got != want { // Decision phase
-// 		t.Errorf("expected: %q, got: %q", want, got)
-// 	}
-// }
+func ExampleMain() {
+	main()
+	// Output:
+	// Hello world
+}
 
 func TestGreet(t *testing.T) {
 	type testCase struct {
@@ -62,12 +31,25 @@ func TestGreet(t *testing.T) {
 			lang: "el",
 			want: "Χαίρετε Κόσμε",
 		},
+		"Hebrew": {
+			lang: "he",
+			want: "שלום עולם",
+		},
+		"Urdu": {
+			lang: "ur",
+			want: "ہیلو دنیا",
+		},
+		"Vietnamese": {
+			lang: "vi",
+			want: "Xin chào Thế Giới",
+		},
 		"Empty": {
 			lang: "",
 			want: `unsupported language: ""`,
 		},
 	}
 
+	// range over all the scenarios
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			got := greet(tc.lang)
